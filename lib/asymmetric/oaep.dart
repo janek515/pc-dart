@@ -150,6 +150,15 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     }
   }
 
+  int get inputBlockSizeV21 {
+    var baseBlockSize = _engine.inputBlockSize;
+    if (_forEncryption) {
+      return baseBlockSize - 2 - 2 * defHash.length;
+    } else {
+      throw Exception('v2.1 supported only for encryption');
+    }
+  }
+
   @override
   int get outputBlockSize {
     var baseBlockSize = _engine.outputBlockSize;
@@ -317,7 +326,7 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
 
   int _encodeV21Block(
       Uint8List inp, int inpOff, int inpLen, Uint8List out, int outOff) {
-    if (inpLen > inputBlockSize) {
+    if (inpLen > inputBlockSizeV21) {
       throw ArgumentError('message too long');
     }
 
