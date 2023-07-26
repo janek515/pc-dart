@@ -411,7 +411,7 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     // the temporary _seed_).
 
     for (var i = 1; i != pHash.length + 1; i++) {
-      block[i] ^= mask[i];
+      block[i] ^= mask[i - 1];
     }
 
     // 11. Calculate _EM_ = maskedSeed || maskedDB
