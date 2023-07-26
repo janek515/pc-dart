@@ -358,7 +358,7 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     // The result _DB_ is stored into [block] starting at offset _hLen_ to the
     // end.
 
-    var block = Uint8List(inputBlockSize + 1 + 2 * pHash.length + 1);
+    var block = Uint8List(inputBlockSizeV21 + 1 + 2 * pHash.length + 1);
 
     // M: copy the message into the end of the block.
     //
