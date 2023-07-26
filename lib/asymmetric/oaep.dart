@@ -386,7 +386,7 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     // starting at offset _hLen_ to the end (overwriting the _DB_).
 
     for (var i = pHash.length + 1; i != block.length; i++) {
-      block[i] ^= mask[i - pHash.length];
+      block[i] ^= mask[i - pHash.length - 1];
     }
 
     // Temporally store the _seed_ in the first _hLen_ bytes of the [block]
