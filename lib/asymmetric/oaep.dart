@@ -188,6 +188,12 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     }
   }
 
+  Uint8List processV21(Uint8List data) {
+    var out = Uint8List(outputBlockSize);
+    var len = processV21Block(data, 0, data.length, out, 0);
+    return out.sublist(0, len);
+  }
+
   /// RSAES-OAEP encryption operation
   ///
   /// Implements the _RSA Encryption Scheme with Optimal Asymmetric Encryption
