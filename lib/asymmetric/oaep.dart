@@ -330,6 +330,8 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
       throw ArgumentError('message too long');
     }
 
+    final k = _engine.inputBlockSize;
+
     // The numbered steps below correspond to the steps in RFC 2437.
     // Names in _italics_ refers to names in the RFC 2437 and names in square
     // brackets refers to variables in this code.
@@ -346,8 +348,10 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     // Note: If no encodingParams are set
     // the [defHash] is used as is (which was initialized to be a hash of no
     // bytes)
-    var pHash =
+    var lHash =
         encodingParams != null ? hash.process(encodingParams!) : defHash;
+
+    final hLen = lHash.length;
 
     // 5. Calculate _DB_ = pHash || PS || 01 || M
     //
@@ -358,86 +362,120 @@ class OAEPEncoding extends BaseAsymmetricBlockCipher {
     // The result _DB_ is stored into [block] starting at offset _hLen_ to the
     // end.
 
-    var block = Uint8List(inputBlockSizeV21 + 1 + 2 * pHash.length + 1);
+    var DB = Uint8List(k - hLen - 1);
 
-    // M: copy the message into the end of the block.
-    //
-    // block.setRange(inpOff, block.length - inpLen, inp.sublist(inpLen));
-    block = _arraycopy(inp, inpOff, block, block.length - inpLen, inpLen);
+    _arraycopy(lHash, 0, DB, 0, hLen);
 
-    // 01: add the sentinel byte
-    //
-    block[block.length - inpLen - 1] = 0x01;
+    _arraycopy(inp, inpOff, DB, DB.length - inpLen, inpLen);
 
-    // PS: since a Uint8List is initialized with 0x00, PS is already zeroed
+    DB[DB.length - inpLen - 1] = 0x01;
 
-    // pHash: add the hash of the encoding params.
-    //
-    block = _arraycopy(pHash, 0, block, pHash.length, pHash.length);
+    final seed = _random.nextBytes(hLen);
 
-    // 6. Generate a random octet string _seed_ of length _hLen_.
-    //
-    // The _seed_ is stored in [seed].
+    final dbMask = _maskGeneratorFunction1(seed, 0, seed.length, DB.length);
 
-    var seed = _random.nextBytes(pHash.length);
-
-    // 7. Calculate _dbMask_ = MGF(seed, emLen - hLen)
-    //
-    // The _seed_ comes from [seed]. The result _dbMask_ is stored into [mask].
-
-    var mask = _maskGeneratorFunction1(
-        seed, 0, seed.length, block.length - pHash.length - 1);
-
-    // 8. Calculate _maskedDB_ = DB XOR dbMask
-    //
-    // The _DB_ comes from [block], starting at offset _hLen_ to the end. The
-    // _dbMask_ comes from [mask]. The result _maskedDB_ is stored into [block]
-    // starting at offset _hLen_ to the end (overwriting the _DB_).
-
-    for (var i = pHash.length + 1; i != block.length; i++) {
-      block[i] ^= mask[i - pHash.length - 1];
+    for (var i = 0; i < DB.length; i++) {
+      DB[i] ^= dbMask[i];
     }
 
-    // Temporally store the _seed_ in the first _hLen_ bytes of the [block]
-    // so it can be used later.
+    // From now on [DB] means _maskedDB_
 
-    block = _arraycopy(seed, 0, block, 1, pHash.length);
+    final seedMask = _maskGeneratorFunction1(DB, 0, DB.length, hLen);
 
-    // 9. Calculate _seedMask_ = MGF(maskedDB, hLen)
-    //
-    // The _maskedDB_ comes from [block], starting at offset _hLen_ to the end.
-    // The result _seedMask_ is stored into [mask] (replacing the _dbMask_ which
-    // is no longer needed).
-
-    mask = _maskGeneratorFunction1(
-        block, pHash.length + 1, block.length - pHash.length - 1, pHash.length);
-
-    // 10. Calculate _maskedSeed_ = seed XOR seedMask
-    //
-    // The _seed_ comes from [block], the first _hLen_ bytes (where it was
-    // temporally stored). The _seedMask_ comes from [mask]. The result
-    // _maskedSeed_ is stored into [block], the first _hLen_ bytes (overwriting
-    // the temporary _seed_).
-
-    for (var i = 1; i != pHash.length + 1; i++) {
-      block[i] ^= mask[i - 1];
+    for (var i = 0; i < seed.length; i++) {
+      seed[i] ^= seedMask[i];
     }
 
-    // 11. Calculate _EM_ = maskedSeed || maskedDB
-    //
-    // The [block] already contains the concatenated value, since they were both
-    // calculated in the first.
+    // From now on [seed] means _maskedSeed_
 
-    // EME-OAEP-ENCODE completed.
+    final EM = Uint8List(k);
 
-    // Use the [_engine] to finish the RSAES-OAEP. That is, it will convert the
-    // _EM_ into an integer, apply the RSA Encryption Primitive (RSAEP) to the
-    // public key, and convert the resulting integer ciphertext representation
-    // into octets. The octets will be written into [out] starting at [outOff].
-    //
-    // Returns the number of bytes in the output ciphertext.
+    _arraycopy(seed, 0, EM, 1, seed.length);
 
-    return _engine.processBlock(block, 0, block.length, out, outOff);
+    _arraycopy(DB, 0, EM, EM.length - DB.length, DB.length);
+
+    return _engine.processBlock(EM, 0, EM.length, out, outOff);
+
+    // var block = Uint8List(inputBlockSizeV21 + 1 + 2 * lHash.length + 1);
+
+    // // M: copy the message into the end of the block.
+    // //
+    // // block.setRange(inpOff, block.length - inpLen, inp.sublist(inpLen));
+    // block = _arraycopy(inp, inpOff, block, block.length - inpLen, inpLen);
+
+    // // 01: add the sentinel byte
+    // //
+    // block[block.length - inpLen - 1] = 0x01;
+
+    // // PS: since a Uint8List is initialized with 0x00, PS is already zeroed
+
+    // // pHash: add the hash of the encoding params.
+    // //
+    // block = _arraycopy(pHash, 0, block, pHash.length, pHash.length);
+
+    // // 6. Generate a random octet string _seed_ of length _hLen_.
+    // //
+    // // The _seed_ is stored in [seed].
+
+    // var seed = _random.nextBytes(pHash.length);
+
+    // // 7. Calculate _dbMask_ = MGF(seed, emLen - hLen)
+    // //
+    // // The _seed_ comes from [seed]. The result _dbMask_ is stored into [mask].
+
+    // var mask = _maskGeneratorFunction1(
+    //     seed, 0, seed.length, block.length - pHash.length - 1);
+
+    // // 8. Calculate _maskedDB_ = DB XOR dbMask
+    // //
+    // // The _DB_ comes from [block], starting at offset _hLen_ to the end. The
+    // // _dbMask_ comes from [mask]. The result _maskedDB_ is stored into [block]
+    // // starting at offset _hLen_ to the end (overwriting the _DB_).
+
+    // for (var i = pHash.length + 1; i != block.length; i++) {
+    //   block[i] ^= mask[i - pHash.length - 1];
+    // }
+
+    // // Temporally store the _seed_ in the first _hLen_ bytes of the [block]
+    // // so it can be used later.
+
+    // block = _arraycopy(seed, 0, block, 1, pHash.length);
+
+    // // 9. Calculate _seedMask_ = MGF(maskedDB, hLen)
+    // //
+    // // The _maskedDB_ comes from [block], starting at offset _hLen_ to the end.
+    // // The result _seedMask_ is stored into [mask] (replacing the _dbMask_ which
+    // // is no longer needed).
+
+    // mask = _maskGeneratorFunction1(
+    //     block, pHash.length + 1, block.length - pHash.length - 1, pHash.length);
+
+    // // 10. Calculate _maskedSeed_ = seed XOR seedMask
+    // //
+    // // The _seed_ comes from [block], the first _hLen_ bytes (where it was
+    // // temporally stored). The _seedMask_ comes from [mask]. The result
+    // // _maskedSeed_ is stored into [block], the first _hLen_ bytes (overwriting
+    // // the temporary _seed_).
+
+    // for (var i = 1; i != pHash.length + 1; i++) {
+    //   block[i] ^= mask[i - 1];
+    // }
+
+    // // 11. Calculate _EM_ = maskedSeed || maskedDB
+    // //
+    // // The [block] already contains the concatenated value, since they were both
+    // // calculated in the first.
+
+    // // EME-OAEP-ENCODE completed.
+
+    // // Use the [_engine] to finish the RSAES-OAEP. That is, it will convert the
+    // // _EM_ into an integer, apply the RSA Encryption Primitive (RSAEP) to the
+    // // public key, and convert the resulting integer ciphertext representation
+    // // into octets. The octets will be written into [out] starting at [outOff].
+    // //
+    // // Returns the number of bytes in the output ciphertext.
+
+    // return _engine.processBlock(block, 0, block.length, out, outOff);
   }
 
   /// RSAES-OAEP decryption operation
